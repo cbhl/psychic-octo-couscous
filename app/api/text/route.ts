@@ -1,21 +1,40 @@
 import { openai } from '@ai-sdk/openai';
+import { anthropic } from '@ai-sdk/anthropic';
 import { generateText } from 'ai';
 
 export async function POST(req: Request) {
-  const { prompt } = await req.json();
+  const { prompt, model } = await req.json();
 
-  const { text } = await generateText({
-    model: openai('gpt-4-turbo'),
-    maxTokens: 100,
-    prompt,
-    experimental_telemetry: {
-      isEnabled: true,
-      functionId: 'example-function-id',
-      metadata: { example: 'value' },
-    },
-  });
+  let provider;
+  if (model.startsWith('gpt')) {
+    provider = openai(model);
+  } else if (model.startsWith('claude')) {
+    provider = anthropic(model);
+  } else {
+    throw new Error('Unsupported model');
+  }
 
-  return new Response(JSON.stringify({ text }), {
-    headers: { 'Content-Type': 'application/json' },
-  });
+  try {
+    const { text } = await generateText({
+      model: provider,
+      maxTokens: 1000,
+      prompt,
+    });
+
+    return new Response(JSON.stringify({ text }), {
+      headers: { 'Content-Type': 'application/json' },
+    });
+  } catch (error) {
+    console.error('Error generating text:', error);
+    return new Response(
+      JSON.stringify({
+        error: 'Failed to generate response',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      }),
+      {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      }
+    );
+  }
 }
