@@ -1,6 +1,11 @@
 import { openai } from '@ai-sdk/openai';
 import { anthropic } from '@ai-sdk/anthropic';
 import { generateText } from 'ai';
+import { Braintrust } from '@braintrust/core';
+
+const braintrust = new Braintrust({
+  apiKey: process.env.BRAINTRUST_API_KEY,
+});
 
 export async function POST(req: Request) {
   const { prompt, model } = await req.json();
@@ -15,10 +20,33 @@ export async function POST(req: Request) {
   }
 
   try {
+    const logId = await braintrust.log({
+      projectId: process.env.BRAINTRUST_PROJECT_ID,
+      input: { prompt },
+      metadata: { model },
+    });
+
     const { text } = await generateText({
       model: provider,
       maxTokens: 1000,
       prompt,
+      experimental_telemetry: {
+        isEnabled: true,
+        functionId: 'generateText',
+        metadata: {
+          model: model,
+          commit: process.env.COMMIT ?? '',
+        }
+      }
+    });
+
+    await braintrust.summarize({
+      logId,
+      output: { text },
+      metrics: {
+        tokens: text.split(' ').length, // Rough estimate
+        model: model,
+      },
     });
 
     return new Response(JSON.stringify({ text }), {
